@@ -380,6 +380,7 @@ with tab_live:
                         placeholder_orig.image(frame_arr, caption="📹 Live Webcam Feed", use_container_width=True)
                         placeholder_camou.image(out_res["output_frame"], caption="🕶️ Real-Time Dynamic Invisibility", use_container_width=True)
                         status_webcam.markdown(f"**Live Stream Active:** `{out_res['metrics']['fps']} FPS` | **Latency:** `{out_res['metrics']['latency_ms']}ms` | **Camera Motion:** `{out_res['metrics']['camera_velocity_px']}px`")
+                        res = out_res
                         time.sleep(0.01)
                     cap.release()
             except Exception as e:
@@ -500,6 +501,22 @@ with tab_live:
                 stream_placeholder_camou.image(out_res["output_frame"], caption=f"Camouflaged Frame {idx+1}", use_container_width=True)
                 time.sleep(0.02)
             st.success("✅ Real-Time Video Stream Processing Complete!")
+
+    # Guarantee res and curr_frame are always defined for inspection and benchmark tabs
+    if "res" not in locals() or res is None:
+        curr_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        res = {
+            "output_frame": curr_frame,
+            "mask": np.zeros((480, 640), dtype=np.uint8),
+            "flow_vis": curr_frame,
+            "metrics": {
+                "fps": 30.0,
+                "latency_ms": 20.0,
+                "camera_velocity_px": 0.0,
+                "erased_pixels": 0,
+                "inpaint_engine": engine_choice
+            }
+        }
 
 
 # ==========================================
