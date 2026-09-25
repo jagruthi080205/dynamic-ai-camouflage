@@ -113,6 +113,11 @@ class CamouflagePipeline:
         warped_bg = None
 
         if self.prev_frame_rgb is not None:
+            if self.prev_frame_rgb.shape != frame_rgb.shape:
+                self.prev_frame_rgb = frame_rgb.copy()
+                self.clean_background_rgb = frame_rgb.copy()
+                self.accumulated_homography = np.eye(3, dtype=np.float32)
+
             # Calculate dense flow for visualization
             dense_flow = self.tracker.compute_dense_flow(self.prev_frame_rgb, frame_rgb)
             flow_vis = self.tracker.visualize_flow_hsv(dense_flow)

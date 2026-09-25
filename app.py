@@ -259,42 +259,45 @@ with tab_live:
 
     # Frame extraction helper
     def get_source_frames(source_name, uploaded_file=None):
+        target_w, target_h = 640, 480
+        frames = []
         if source_name == "Preset Moving Camera Person (Benchmark)":
             gif_path = SAMPLES_DIR / "sample_moving_person.gif"
             if gif_path.exists():
                 im = Image.open(gif_path)
-                frames = []
                 for i in range(im.n_frames):
                     im.seek(i)
-                    frames.append(np.array(im.convert("RGB")))
+                    frame_rgb = im.convert("RGB").resize((target_w, target_h), Image.Resampling.NEAREST)
+                    frames.append(np.ascontiguousarray(np.array(frame_rgb), dtype=np.uint8))
                 return frames
         elif source_name == "Preset Red Cloak Invisibility (Benchmark)":
             gif_path = SAMPLES_DIR / "sample_red_cloak.gif"
             if gif_path.exists():
                 im = Image.open(gif_path)
-                frames = []
                 for i in range(im.n_frames):
                     im.seek(i)
-                    frames.append(np.array(im.convert("RGB")))
+                    frame_rgb = im.convert("RGB").resize((target_w, target_h), Image.Resampling.NEAREST)
+                    frames.append(np.ascontiguousarray(np.array(frame_rgb), dtype=np.uint8))
                 return frames
         elif source_name == "Preset Desk Object Scene":
             png_path = SAMPLES_DIR / "sample_desk_object.png"
             if png_path.exists():
-                return [np.array(Image.open(png_path).convert("RGB"))]
+                img = Image.open(png_path).convert("RGB").resize((target_w, target_h), Image.Resampling.NEAREST)
+                return [np.ascontiguousarray(np.array(img), dtype=np.uint8)]
         elif uploaded_file is not None:
             if uploaded_file.name.lower().endswith(('.png', '.jpg', '.jpeg')):
-                img = Image.open(uploaded_file).convert("RGB")
-                return [np.array(img)]
+                img = Image.open(uploaded_file).convert("RGB").resize((target_w, target_h), Image.Resampling.NEAREST)
+                return [np.ascontiguousarray(np.array(img), dtype=np.uint8)]
             elif uploaded_file.name.lower().endswith(('.gif')):
                 im = Image.open(uploaded_file)
-                frames = []
                 for i in range(min(im.n_frames, 60)):
                     im.seek(i)
-                    frames.append(np.array(im.convert("RGB")))
+                    frame_rgb = im.convert("RGB").resize((target_w, target_h), Image.Resampling.NEAREST)
+                    frames.append(np.ascontiguousarray(np.array(frame_rgb), dtype=np.uint8))
                 return frames
 
         # Fallback synthetic frame
-        return [np.ones((480, 640, 3), dtype=np.uint8) * 160]
+        return [np.ones((target_h, target_w, 3), dtype=np.uint8) * 160]
 
     uploaded_media = None
     if "Upload" in input_source:
@@ -310,17 +313,38 @@ with tab_live:
     with col_slider:
         frame_idx = st.slider("Frame Scrubber", 0, max(0, len(frames) - 1), 0)
 
-    # Execution display
-    curr_frame = frames[frame_idx]
+    # Manage temporal continuity on frame scrub
+    if "last_source" not in st.session_state or st.session_state["last_source"] != input_source:
+        pipeline.reset()
+        st.session_state["last_source"] = input_source
 
-    # Process frame
-    res = pipeline.process_frame(
-        curr_frame,
-        mode=mode_key,
-        bbox=bbox_coords,
-        color_key=color_choice,
-        motion_compensation=enable_motion_comp
-    )
+    if frame_idx > 0 and len(frames) > 1:
+        # Pre-set previous frame for accurate differential motion tracking
+        pipeline.prev_frame_rgb = np.ascontiguousarray(frames[frame_idx - 1], dtype=np.uint8)
+    else:
+        pipeline.reset()
+
+    # Current target frame
+    curr_frame = np.ascontiguousarray(frames[frame_idx], dtype=np.uint8)
+
+    # Process frame with full exception safety
+    try:
+        res = pipeline.process_frame(
+            curr_frame,
+            mode=mode_key,
+            bbox=bbox_coords,
+            color_key=color_choice,
+            motion_compensation=enable_motion_comp
+        )
+    except Exception as e:
+        pipeline.reset()
+        res = pipeline.process_frame(
+            curr_frame,
+            mode=mode_key,
+            bbox=bbox_coords,
+            color_key=color_choice,
+            motion_compensation=False
+        )
 
     # Display HUD Metrics
     with col_hud:
@@ -369,16 +393,27 @@ with tab_live:
 
         pipeline.reset()
         for idx, f in enumerate(frames):
-            out_res = pipeline.process_frame(
-                f,
-                mode=mode_key,
-                bbox=bbox_coords,
-                color_key=color_choice,
-                motion_compensation=enable_motion_comp
-            )
+            frame_arr = np.ascontiguousarray(f, dtype=np.uint8)
+            try:
+                out_res = pipeline.process_frame(
+                    frame_arr,
+                    mode=mode_key,
+                    bbox=bbox_coords,
+                    color_key=color_choice,
+                    motion_compensation=enable_motion_comp
+                )
+            except Exception:
+                out_res = pipeline.process_frame(
+                    frame_arr,
+                    mode=mode_key,
+                    bbox=bbox_coords,
+                    color_key=color_choice,
+                    motion_compensation=False
+                )
+
             progress_bar.progress((idx + 1) / len(frames))
             status_text.text(f"Processing Frame {idx+1}/{len(frames)} | Latency: {out_res['metrics']['latency_ms']}ms | FPS: {out_res['metrics']['fps']}")
-            stream_placeholder_orig.image(f, caption=f"Original Frame {idx+1}", use_container_width=True)
+            stream_placeholder_orig.image(frame_arr, caption=f"Original Frame {idx+1}", use_container_width=True)
             stream_placeholder_camou.image(out_res["output_frame"], caption=f"Camouflaged Frame {idx+1}", use_container_width=True)
             time.sleep(0.02)
         st.success("✅ Real-Time Video Stream Processing Complete!")
@@ -389,7 +424,7 @@ with tab_live:
 # ==========================================
 with tab_inspector:
     st.markdown("### 🔬 Neural Optical Flow & Deep Segmentation Inspector")
-    st.markdown("""
+    st.markdown(r"""
     Explore how the system solves the classic moving-camera limitation by decomposing the scene into 
     **Target Segmentations**, **Dense Optical Flow Velocity Fields**, and **Motion Compensated Background Warping**.
     """)
@@ -414,7 +449,7 @@ with tab_inspector:
     st.markdown("---")
     st.markdown("#### 📐 Mathematical Motion Model")
     st.latex(r"I(x, y, t) = I(x + \Delta u, y + \Delta v, t + \Delta t)")
-    st.markdown("""
+    st.markdown(r"""
     By enforcing the **Brightness Constancy Constraint** through the Gunnar Farneback polynomial expansion:
     $$f_1(\mathbf{x}) \approx \mathbf{x}^T \mathbf{A}_1 \mathbf{x} + \mathbf{b}_1^T \mathbf{x} + c_1$$
     The pipeline solves for global affine camera homography $\mathbf{H} \in \mathbb{R}^{3 \times 3}$ and warps past clean background pixels forward in time without requiring a stationary tripod.
@@ -469,7 +504,7 @@ with tab_benchmark:
 with tab_viva:
     st.markdown("### 🎓 Viva Master Guide, Interview Q&As & Resume Points")
 
-    st.markdown("""
+    st.markdown(r"""
     #### 🎙️ 10-Minute Presentation Script for Evaluators & Interviewers
     1. **The Core Problem:** Classic invisibility cloak projects (2018-era OpenCV HSV thresholding) have fatal flaws: they require a static tripod, identical lighting, and a pre-captured background with no camera movement.
     2. **Our Innovation:** *Dynamic AI Camouflage* eliminates these constraints by pairing deep learning semantic target masking with **Dense Farneback Optical Flow** motion tracking and **Generative Neural Inpainting**.
@@ -483,27 +518,27 @@ with tab_viva:
     st.markdown("#### ❓ Top 5 Viva / Technical Interview Questions")
 
     with st.expander("Q1: How does this project handle camera motion compared to classic Invisibility Cloak implementations?"):
-        st.write("""
+        st.write(r"""
         **Answer:** Classic implementations store a static frame $I_{bg}$ at $t=0$. When the camera shifts, the coordinate mapping breaks completely. Our system continuously calculates the optical flow velocity vector field between frame $I_{t-1}$ and $I_t$. By computing an affine homography matrix $\mathbf{H}_t$ on background keypoints, the historical background is warped into the current moving camera frame perspective dynamically.
         """)
 
     with st.expander("Q2: Why use Gunnar Farneback Optical Flow instead of simple Lucas-Kanade?"):
-        st.write("""
+        st.write(r"""
         **Answer:** Lucas-Kanade is a sparse feature tracker that only computes motion at strong corners. Farneback optical flow approximates pixel neighborhoods using quadratic polynomial expansions, yielding a **dense 2D displacement vector field** $(\Delta u, \Delta v)$ across every pixel in the frame. This ensures smooth, full-frame motion compensation.
         """)
 
     with st.expander("Q3: How does the system achieve real-time 30 FPS inference speed?"):
-        st.write("""
+        st.write(r"""
         **Answer:** The architecture uses a hybrid pipeline: lightweight deep learning segmentation running on downsampled feature maps, coupled with fast C++ vectorized morphological dilation, SIMD-accelerated Farneback flow, and multi-scale bilateral texture inpainting, keeping total per-frame latency under $25\text{ ms}$.
         """)
 
     with st.expander("Q4: What happens if an object is permanently occluded and never seen before?"):
-        st.write("""
+        st.write(r"""
         **Answer:** When no temporal background history exists for a hole, the pipeline seamlessly transitions to Generative Context Inpainting (Telea / Navier-Stokes isophote diffusion), which synthesizes high-frequency structural textures from the outer boundaries inward.
         """)
 
     with st.expander("Q5: What are the primary real-world applications of Dynamic AI Camouflage?"):
-        st.write("""
+        st.write(r"""
         **Answer:** 
         1. **Privacy & Anonymization:** Automatic real-time removal of bystanders and private objects in public live streams.
         2. **Film & VFX:** Dynamic wire / rig removal and live actor green-screen-free camouflage preview on film sets.

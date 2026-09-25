@@ -10,12 +10,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-try:
-    import cv2
-    HAS_CV2 = True
-except ImportError:
-    HAS_CV2 = False
-
 from src.config import SAMPLES_DIR
 
 def generate_photorealistic_background(width=640, height=480) -> np.ndarray:
@@ -56,29 +50,27 @@ def generate_photorealistic_background(width=640, height=480) -> np.ndarray:
     return np.ascontiguousarray(canvas, dtype=np.uint8)
 
 def create_sample_clips():
-    """Generates benchmark moving-camera test clips and sample test images."""
+    """Generates benchmark moving-camera test clips and sample test images with exact 640x480 dimensions."""
     width, height = 640, 480
-    bg_wide = generate_photorealistic_background(width + 200, height)
+    bg_wide = generate_photorealistic_background(width + 200, height + 40)
     fps = 30
-    total_frames = 60  # 2 seconds benchmark
+    total_frames = 45  # 1.5 seconds smooth loop
 
-    # 1. Generate sample_moving_person
-    out_video_1 = SAMPLES_DIR / "sample_moving_person.mp4"
-    print("Generating sample 1: sample_moving_person ...")
-
+    # 1. Generate sample_moving_person.gif
+    print("Generating sample 1: sample_moving_person.gif ...")
     frames_pil_1 = []
     for t in range(total_frames):
-        cam_shift_x = int(50 + 40 * math.sin(t / 15.0))
-        cam_shift_y = int(5 * math.cos(t / 15.0))
+        cam_shift_x = int(50 + 40 * math.sin(t / 10.0))
+        cam_shift_y = int(10 + 5 * math.cos(t / 10.0))
 
         frame_arr = np.ascontiguousarray(
-            bg_wide[cam_shift_y:cam_shift_y+height, cam_shift_x:cam_shift_x+width].copy(),
+            bg_wide[cam_shift_y:cam_shift_y+height, cam_shift_x:cam_shift_x+width, :].copy(),
             dtype=np.uint8
         )
-        pil_img = Image.fromarray(frame_arr)
+        pil_img = Image.fromarray(frame_arr).resize((width, height), Image.Resampling.NEAREST)
         draw = ImageDraw.Draw(pil_img)
 
-        person_x = int(width * 0.5 + 15 * math.sin(t / 20.0))
+        person_x = int(width * 0.5 + 15 * math.sin(t / 15.0))
         person_y = int(height * 0.55)
 
         # Head
@@ -93,29 +85,28 @@ def create_sample_clips():
 
         frames_pil_1.append(pil_img)
 
-    # Save animated GIF
     frames_pil_1[0].save(
         str(SAMPLES_DIR / "sample_moving_person.gif"),
         save_all=True,
         append_images=frames_pil_1[1:],
-        duration=33,
+        duration=40,
         loop=0
     )
     print(f"Sample 1 saved to: {SAMPLES_DIR / 'sample_moving_person.gif'}")
 
-    # 2. Generate sample_red_cloak
-    print("Generating sample 2: sample_red_cloak ...")
+    # 2. Generate sample_red_cloak.gif
+    print("Generating sample 2: sample_red_cloak.gif ...")
     frames_pil_2 = []
 
     for t in range(total_frames):
-        cam_shift_x = int(50 + 35 * math.sin(t / 18.0))
-        cam_shift_y = 0
+        cam_shift_x = int(50 + 35 * math.sin(t / 12.0))
+        cam_shift_y = int(10)
 
         frame_arr = np.ascontiguousarray(
-            bg_wide[cam_shift_y:cam_shift_y+height, cam_shift_x:cam_shift_x+width].copy(),
+            bg_wide[cam_shift_y:cam_shift_y+height, cam_shift_x:cam_shift_x+width, :].copy(),
             dtype=np.uint8
         )
-        pil_img = Image.fromarray(frame_arr)
+        pil_img = Image.fromarray(frame_arr).resize((width, height), Image.Resampling.NEAREST)
         draw = ImageDraw.Draw(pil_img)
 
         person_x = int(width * 0.5)
@@ -140,15 +131,15 @@ def create_sample_clips():
         str(SAMPLES_DIR / "sample_red_cloak.gif"),
         save_all=True,
         append_images=frames_pil_2[1:],
-        duration=33,
+        duration=40,
         loop=0
     )
     print(f"Sample 2 saved to: {SAMPLES_DIR / 'sample_red_cloak.gif'}")
 
     # 3. Generate static high-res sample desk image
     sample_img_path = SAMPLES_DIR / "sample_desk_object.png"
-    img_arr = np.ascontiguousarray(bg_wide[0:height, 50:50+width].copy(), dtype=np.uint8)
-    pil_desk = Image.fromarray(img_arr)
+    img_arr = np.ascontiguousarray(bg_wide[10:10+height, 50:50+width, :].copy(), dtype=np.uint8)
+    pil_desk = Image.fromarray(img_arr).resize((width, height), Image.Resampling.NEAREST)
     draw_desk = ImageDraw.Draw(pil_desk)
     # Coffee mug
     draw_desk.rectangle([280, 270, 340, 340], fill=(235, 235, 240))
