@@ -253,7 +253,14 @@ with tab_live:
     with col_ctrl:
         input_source = st.radio(
             "Select Video / Image Feed Source:",
-            ["Preset Moving Camera Person (Benchmark)", "Preset Red Cloak Invisibility (Benchmark)", "Preset Desk Object Scene", "Upload Custom Video / Image"],
+            [
+                "Preset Moving Camera Person (Benchmark)",
+                "Preset Red Cloak Invisibility (Benchmark)",
+                "Preset Desk Object Scene",
+                "📷 Live Webcam Stream (Real-Time)",
+                "📸 Live Camera Snapshot (Instant Photo)",
+                "Upload Custom Video / Image"
+            ],
             horizontal=True
         )
 
@@ -303,120 +310,196 @@ with tab_live:
     if "Upload" in input_source:
         uploaded_media = st.file_uploader("Upload MP4, GIF, PNG, or JPG file", type=["mp4", "gif", "png", "jpg", "jpeg"])
 
-    frames = get_source_frames(input_source, uploaded_media)
+    # LIVE CAMERA SNAPSHOT MODE
+    if input_source == "📸 Live Camera Snapshot (Instant Photo)":
+        st.markdown("### 📸 Live Webcam Photo Camouflage")
+        st.info("💡 Take a picture using your laptop camera. Hold up a red shirt/cloth or pose in front of your room to see the invisibility effect!")
+        cam_photo = st.camera_input("Take Live Photo")
+        if cam_photo is not None:
+            img = Image.open(cam_photo).convert("RGB").resize((640, 480), Image.Resampling.NEAREST)
+            curr_frame = np.ascontiguousarray(np.array(img), dtype=np.uint8)
+            res = pipeline.process_frame(
+                curr_frame,
+                mode=mode_key,
+                bbox=bbox_coords,
+                color_key=color_choice,
+                motion_compensation=False
+            )
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("#### 📹 Your Live Camera Photo")
+                st.image(curr_frame, use_container_width=True)
+            with col2:
+                st.markdown("#### 🕶️ Dynamic AI Invisibility Result")
+                st.image(res["output_frame"], caption=f"Erased Region (Engine: {engine_choice})", use_container_width=True)
 
-    # Controls for animation / frame stepping
-    st.markdown("---")
-    col_play, col_slider = st.columns([1, 3])
-    with col_play:
-        auto_run = st.button("▶️ Process Full Video Clip", type="primary", use_container_width=True)
-    with col_slider:
-        frame_idx = st.slider("Frame Scrubber", 0, max(0, len(frames) - 1), 0)
+    # LIVE CONTINUOUS WEBCAM STREAM MODE
+    elif input_source == "📷 Live Webcam Stream (Real-Time)":
+        st.markdown("### 📷 Live Continuous Laptop/Webcam Stream")
+        st.info("💡 **Instructions:** Step out of view for 1 second so AI captures your clean room background, then step in holding a colored cloth (e.g. Red) to vanish!")
+        col_w1, col_w2 = st.columns([1, 1])
+        with col_w1:
+            run_live_cam = st.toggle("🟢 Turn On Live Camera", value=False)
+        with col_w2:
+            reset_bg_btn = st.button("📸 Recapture Clean Room Background")
+            if reset_bg_btn:
+                pipeline.reset()
+                st.success("Background buffer cleared. Next frame will be locked as background!")
 
-    # Manage temporal continuity on frame scrub
-    if "last_source" not in st.session_state or st.session_state["last_source"] != input_source:
-        pipeline.reset()
-        st.session_state["last_source"] = input_source
+        col_cam_left, col_cam_right = st.columns(2)
+        placeholder_orig = col_cam_left.empty()
+        placeholder_camou = col_cam_right.empty()
+        status_webcam = st.empty()
 
-    if frame_idx > 0 and len(frames) > 1:
-        # Pre-set previous frame for accurate differential motion tracking
-        pipeline.prev_frame_rgb = np.ascontiguousarray(frames[frame_idx - 1], dtype=np.uint8)
-    else:
-        pipeline.reset()
-
-    # Current target frame
-    curr_frame = np.ascontiguousarray(frames[frame_idx], dtype=np.uint8)
-
-    # Process frame with full exception safety
-    try:
-        res = pipeline.process_frame(
-            curr_frame,
-            mode=mode_key,
-            bbox=bbox_coords,
-            color_key=color_choice,
-            motion_compensation=enable_motion_comp
-        )
-    except Exception as e:
-        pipeline.reset()
-        res = pipeline.process_frame(
-            curr_frame,
-            mode=mode_key,
-            bbox=bbox_coords,
-            color_key=color_choice,
-            motion_compensation=False
-        )
-
-    # Display HUD Metrics
-    with col_hud:
-        m1, m2, m3 = st.columns(3)
-        with m1:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-val">{res['metrics']['fps']}</div>
-                <div class="metric-lbl">Target FPS</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with m2:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-val">{res['metrics']['latency_ms']}ms</div>
-                <div class="metric-lbl">Latency</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with m3:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-val">{res['metrics']['camera_velocity_px']}px</div>
-                <div class="metric-lbl">Cam Motion</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # Side-by-Side Video Stream Display
-    col_orig, col_camou = st.columns(2)
-    with col_orig:
-        st.markdown("#### 📹 Original Camera Stream (With Target)")
-        st.image(curr_frame, caption=f"Original Input Frame ({curr_frame.shape[1]}x{curr_frame.shape[0]})", use_container_width=True)
-
-    with col_camou:
-        st.markdown("#### 🕶️ Dynamic Camouflaged Output (Erased)")
-        st.image(res["output_frame"], caption=f"Neural Inpainted Result (Algorithm: {engine_choice})", use_container_width=True)
-
-    # If full run is triggered
-    if auto_run and len(frames) > 1:
-        st.info("Processing continuous video stream ...")
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        stream_placeholder_orig = col_orig.empty()
-        stream_placeholder_camou = col_camou.empty()
-
-        pipeline.reset()
-        for idx, f in enumerate(frames):
-            frame_arr = np.ascontiguousarray(f, dtype=np.uint8)
+        if run_live_cam:
             try:
-                out_res = pipeline.process_frame(
-                    frame_arr,
-                    mode=mode_key,
-                    bbox=bbox_coords,
-                    color_key=color_choice,
-                    motion_compensation=enable_motion_comp
-                )
-            except Exception:
-                out_res = pipeline.process_frame(
-                    frame_arr,
-                    mode=mode_key,
-                    bbox=bbox_coords,
-                    color_key=color_choice,
-                    motion_compensation=False
-                )
+                import cv2
+                cap = cv2.VideoCapture(0)
+                if not cap.isOpened():
+                    st.error("❌ Unable to access webcam. Please ensure camera permissions are allowed or use the '📸 Live Camera Snapshot' mode.")
+                else:
+                    pipeline.reset()
+                    frame_count_live = 0
+                    while run_live_cam:
+                        ret, raw_bgr = cap.read()
+                        if not ret or raw_bgr is None:
+                            break
 
-            progress_bar.progress((idx + 1) / len(frames))
-            status_text.text(f"Processing Frame {idx+1}/{len(frames)} | Latency: {out_res['metrics']['latency_ms']}ms | FPS: {out_res['metrics']['fps']}")
-            stream_placeholder_orig.image(frame_arr, caption=f"Original Frame {idx+1}", use_container_width=True)
-            stream_placeholder_camou.image(out_res["output_frame"], caption=f"Camouflaged Frame {idx+1}", use_container_width=True)
-            time.sleep(0.02)
-        st.success("✅ Real-Time Video Stream Processing Complete!")
+                        raw_rgb = cv2.cvtColor(raw_bgr, cv2.COLOR_BGR2RGB)
+                        frame_resized = cv2.resize(raw_rgb, (640, 480))
+                        frame_arr = np.ascontiguousarray(frame_resized, dtype=np.uint8)
+
+                        out_res = pipeline.process_frame(
+                            frame_arr,
+                            mode=mode_key,
+                            bbox=bbox_coords,
+                            color_key=color_choice,
+                            motion_compensation=enable_motion_comp
+                        )
+
+                        placeholder_orig.image(frame_arr, caption="📹 Live Webcam Feed", use_container_width=True)
+                        placeholder_camou.image(out_res["output_frame"], caption="🕶️ Real-Time Dynamic Invisibility", use_container_width=True)
+                        status_webcam.markdown(f"**Live Stream Active:** `{out_res['metrics']['fps']} FPS` | **Latency:** `{out_res['metrics']['latency_ms']}ms` | **Camera Motion:** `{out_res['metrics']['camera_velocity_px']}px`")
+                        time.sleep(0.01)
+                    cap.release()
+            except Exception as e:
+                st.warning(f"Webcam notice: {e}. You can also use '📸 Live Camera Snapshot' mode for 1-click photo erasure!")
+
+    # PRESET VIDEO & BENCHMARK MODE
+    else:
+        frames = get_source_frames(input_source, uploaded_media)
+
+        # Controls for animation / frame stepping
+        st.markdown("---")
+        col_play, col_slider = st.columns([1, 3])
+        with col_play:
+            auto_run = st.button("▶️ Process Full Video Clip", type="primary", use_container_width=True)
+        with col_slider:
+            frame_idx = st.slider("Frame Scrubber", 0, max(0, len(frames) - 1), 0)
+
+        # Manage temporal continuity on frame scrub
+        if "last_source" not in st.session_state or st.session_state["last_source"] != input_source:
+            pipeline.reset()
+            st.session_state["last_source"] = input_source
+
+        if frame_idx > 0 and len(frames) > 1:
+            pipeline.prev_frame_rgb = np.ascontiguousarray(frames[frame_idx - 1], dtype=np.uint8)
+        else:
+            pipeline.reset()
+
+        # Current target frame
+        curr_frame = np.ascontiguousarray(frames[frame_idx], dtype=np.uint8)
+
+        # Process frame with full exception safety
+        try:
+            res = pipeline.process_frame(
+                curr_frame,
+                mode=mode_key,
+                bbox=bbox_coords,
+                color_key=color_choice,
+                motion_compensation=enable_motion_comp
+            )
+        except Exception:
+            pipeline.reset()
+            res = pipeline.process_frame(
+                curr_frame,
+                mode=mode_key,
+                bbox=bbox_coords,
+                color_key=color_choice,
+                motion_compensation=False
+            )
+
+        # Display HUD Metrics
+        with col_hud:
+            m1, m2, m3 = st.columns(3)
+            with m1:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-val">{res['metrics']['fps']}</div>
+                    <div class="metric-lbl">Target FPS</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with m2:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-val">{res['metrics']['latency_ms']}ms</div>
+                    <div class="metric-lbl">Latency</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with m3:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-val">{res['metrics']['camera_velocity_px']}px</div>
+                    <div class="metric-lbl">Cam Motion</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # Side-by-Side Video Stream Display
+        col_orig, col_camou = st.columns(2)
+        with col_orig:
+            st.markdown("#### 📹 Original Camera Stream (With Target)")
+            st.image(curr_frame, caption=f"Original Input Frame ({curr_frame.shape[1]}x{curr_frame.shape[0]})", use_container_width=True)
+
+        with col_camou:
+            st.markdown("#### 🕶️ Dynamic Camouflaged Output (Erased)")
+            st.image(res["output_frame"], caption=f"Neural Inpainted Result (Algorithm: {engine_choice})", use_container_width=True)
+
+        # If full run is triggered
+        if auto_run and len(frames) > 1:
+            st.info("Processing continuous video stream ...")
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            stream_placeholder_orig = col_orig.empty()
+            stream_placeholder_camou = col_camou.empty()
+
+            pipeline.reset()
+            for idx, f in enumerate(frames):
+                frame_arr = np.ascontiguousarray(f, dtype=np.uint8)
+                try:
+                    out_res = pipeline.process_frame(
+                        frame_arr,
+                        mode=mode_key,
+                        bbox=bbox_coords,
+                        color_key=color_choice,
+                        motion_compensation=enable_motion_comp
+                    )
+                except Exception:
+                    out_res = pipeline.process_frame(
+                        frame_arr,
+                        mode=mode_key,
+                        bbox=bbox_coords,
+                        color_key=color_choice,
+                        motion_compensation=False
+                    )
+
+                progress_bar.progress((idx + 1) / len(frames))
+                status_text.text(f"Processing Frame {idx+1}/{len(frames)} | Latency: {out_res['metrics']['latency_ms']}ms | FPS: {out_res['metrics']['fps']}")
+                stream_placeholder_orig.image(frame_arr, caption=f"Original Frame {idx+1}", use_container_width=True)
+                stream_placeholder_camou.image(out_res["output_frame"], caption=f"Camouflaged Frame {idx+1}", use_container_width=True)
+                time.sleep(0.02)
+            st.success("✅ Real-Time Video Stream Processing Complete!")
 
 
 # ==========================================
