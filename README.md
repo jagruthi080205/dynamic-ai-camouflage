@@ -1,11 +1,17 @@
 # 🕶️ Dynamic AI Camouflage: Real-Time Neural Object & Moving-Camera Video Eraser
 
 <p align="center">
+  <a href="https://fgxnwxfvbfbjhbfrusyxuu.streamlit.app" target="_blank">
+    <img src="https://static.streamlit.io/badges/streamlit_badge_black_white.svg" alt="Open in Streamlit" />
+  </a>
   <img src="https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-3776AB?style=for-the-badge&logo=python&logoColor=white" />
   <img src="https://img.shields.io/badge/PyTorch-2.14-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white" />
   <img src="https://img.shields.io/badge/OpenCV-Headless%20%26%20GUI-5C3EE8?style=for-the-badge&logo=opencv&logoColor=white" />
-  <img src="https://img.shields.io/badge/Streamlit-1.63-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white" />
   <img src="https://img.shields.io/badge/Throughput-30%20FPS%20Real--Time-00FFAA?style=for-the-badge" />
+</p>
+
+<p align="center">
+  🚀 <b>Live Interactive Web Application:</b> <a href="https://fgxnwxfvbfbjhbfrusyxuu.streamlit.app" target="_blank">https://fgxnwxfvbfbjhbfrusyxuu.streamlit.app</a>
 </p>
 
 ---

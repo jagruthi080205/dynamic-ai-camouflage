@@ -6,6 +6,8 @@
 ## 📌 Executive Summary
 **Dynamic AI Camouflage** is a real-time, deep-learning computer vision system that erases target objects, people, or gestures from **moving handheld cameras** and live video streams at $30\text{ FPS}$ without static background buffers or green screens.
 
+🔗 **Live Cloud Application:** [https://fgxnwxfvbfbjhbfrusyxuu.streamlit.app](https://fgxnwxfvbfbjhbfrusyxuu.streamlit.app)
+
 ---
 
 ## 🎙️ 10-Minute Presentation Script (For Project Viva / Demo / Interview)
