@@ -129,11 +129,6 @@ streamlit run app.py
 
 ---
 
-## 🎓 Viva & Presentation Resources
-Read [PROJECT_GUIDE.md](PROJECT_GUIDE.md) for:
-- 🎙️ Full 10-Minute Presentation Script.
-- ❓ Top 5 Viva / Interview Questions and Answers.
-- 📄 Ready-to-copy Resume Bullet Points.
 
 ---
 
